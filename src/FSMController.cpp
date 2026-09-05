@@ -36,6 +36,10 @@ bool PillTransition::isValid(const GameState& gs){
 		last =quedan;
 		return true;
 	}
+	if(last == -1){
+		last = quedan;
+        return false;
+	}
 	return false;
 }
 std::shared_ptr<FSMState> PillTransition::getNextState(){
@@ -45,46 +49,53 @@ std::shared_ptr<FSMState> PillTransition::getNextState(){
 
 
 ///////////////////////////////ChaseState///////////////////////////////////////
-ChaseState::ChaseState(std::shared_ptr<Character> _character):FSMState(_character){
+ChaseState::ChaseState(std::shared_ptr<Character> _character): FSMState(_character) {}
 
+void ChaseState::onEnter(const GameState&) {
+    auto ghost = std::dynamic_pointer_cast<Ghost>(character);
+    if (ghost) {
+        ghost->revert();
+    }
 }
-void ChaseState::onEnter(const GameState& ){
-	std::dynamic_pointer_cast<Ghost>(character)->revert();
-}
-Move ChaseState::onUpdate(const GameState& game){
-	std::vector<Move> moves;
-	const auto pacmanCoord=game.getMaze().getNodePos(game.getPacmanPos());
-	const auto myPos=character->getPos();
-	//const auto myCoord=game.getMaze().getNodePos(myPos);
 
-	if(character->getDirection()==PASS){
-		moves=game.getMaze().getPossibleMoves(myPos);
-	}else{
-		moves=game.getMaze().getGhostLegalMoves(myPos,character->getDirection());
-	}
+Move ChaseState::onUpdate(const GameState& game) {
+    std::vector<Move> moves;
+    const auto pacmanCoord = game.getMaze().getNodePos(game.getPacmanPos());
+    const auto myPos = character->getPos();
 
-	float min=euclid2(
-		game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos,moves[0])),
-			pacmanCoord);
-	int minI=0;
-	for(unsigned int i=1;i<moves.size();i++){
-		auto dist=euclid2(
-			game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos,moves[i])),
-			pacmanCoord);
-		if(dist<min){
-			min=dist;
-			minI=i;
-		}
-	}
-	return moves[minI];
-}
-ChaseState::~ChaseState(){
+    if (character->getDirection() == PASS) {
+        moves = game.getMaze().getPossibleMoves(myPos);
+    } else {
+        moves = game.getMaze().getGhostLegalMoves(myPos, character->getDirection());
+    }
 
+    if (moves.empty()) return PASS;
+
+    float min = euclid2(
+        game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos, moves[0])),
+        pacmanCoord
+    );
+    int minI = 0;
+    for (unsigned int i = 1; i < moves.size(); i++) {
+        auto dist = euclid2(
+            game.getMaze().getNodePos(game.getMaze().getNeighbour(myPos, moves[i])),
+            pacmanCoord
+        );
+        if (dist < min) {
+            min = dist;
+            minI = i;
+        }
+    }
+    return moves[minI];
 }
+
+ChaseState::~ChaseState() {}
+
 ScatterState::ScatterState(std::shared_ptr<Character> _character): FSMState(_character) {}
 
 Move ScatterState::onUpdate(const GameState& game) {
     std::vector<Move> moves;
+    // Objetivo: Esquina superior/nodo 0 para el fantasma
     const auto scatterTarget = game.getMaze().getNodePos(0); 
     const auto myPos = character->getPos();
 
@@ -123,6 +134,7 @@ NonfrightenedStateMachine::NonfrightenedStateMachine(std::shared_ptr<Character> 
     auto chase = std::make_shared<ChaseState>(character);
     auto scatter = std::make_shared<ScatterState>(character);
 
+    // Transición recíproca entre Chase y Scatter según el consumo de píldoras
     chase->addTransition(std::make_shared<PillTransition>(scatter));
     scatter->addTransition(std::make_shared<PillTransition>(chase));
 
@@ -133,8 +145,8 @@ NonfrightenedStateMachine::NonfrightenedStateMachine(std::shared_ptr<Character> 
     states.push_back(scatter);
 }
 
-Move NonfrightenedStateMachine::update(const GameState& game){
-	auto t = activeState->getActiveTransition(game);
+Move NonfrightenedStateMachine::update(const GameState& game) {
+    auto t = activeState->getActiveTransition(game);
     if (t != nullptr) {
         activeState->onExit(game);
         t->onTransition(game);
@@ -155,34 +167,28 @@ Move NonfrightenedState::onUpdate(const GameState& game) {
     return fsm->update(game);
 }
 
-void NonfrightenedState::onEnter(const GameState&) {}
+void NonfrightenedState::onEnter(const GameState& game) {}
 
-void NonfrightenedState::onExit(const GameState&) {}
+void NonfrightenedState::onExit(const GameState& game) {}
 
 NonfrightenedState::~NonfrightenedState() {}
 
 /////////////////////////////////////BlinkyStateMachine/////////////////////////////
 ExampleStateMachine::ExampleStateMachine(std::shared_ptr<Character> _character):FiniteStateMachine(_character){
-	initialState = std::make_shared<ChaseState>(character);
+	initialState = std::make_shared<NonfrightenedState>(character);
 	activeState=initialState;
 	states.push_back(initialState);
-	activeState->addTransition(std::make_shared<PillTransition>(activeState)); // Arreglar
 }
 
-Move ExampleStateMachine::update(const GameState& gs){
-	auto t=activeState->getActiveTransition(gs);
-	if(t!=nullptr){
-		activeState->onExit(gs);
-		t->onTransition(gs);
-		activeState=t->getNextState();
-		activeState->onEnter(gs);
-	}
-	return activeState->onUpdate(gs);
+Move ExampleStateMachine::update(const GameState& gs) {
+    auto t = activeState->getActiveTransition(gs);
+    if (t != nullptr) {
+        activeState->onExit(gs);
+        t->onTransition(gs);
+        activeState = t->getNextState();
+        activeState->onEnter(gs);
+    }
+    return activeState->onUpdate(gs);
 }
 
-
-ExampleStateMachine::~ExampleStateMachine(){
-
-}
-
-
+ExampleStateMachine::~ExampleStateMachine() {}
