@@ -43,6 +43,31 @@ public:
 
 };
 
+class ScatterState: public FSMState {
+public:
+    ScatterState(std::shared_ptr<Character> _character);
+    Move onUpdate(const GameState& gs) override;
+    ~ScatterState() override;
+};
+
+class NonfrightenedStateMachine: public FiniteStateMachine {
+public:
+    NonfrightenedStateMachine(std::shared_ptr<Character> _character);
+    Move update(const GameState& game) override;
+    ~NonfrightenedStateMachine() override;
+};
+
+class NonfrightenedState: public FSMState {
+private:
+    std::shared_ptr<NonfrightenedStateMachine> fsm;
+public:
+    NonfrightenedState(std::shared_ptr<Character> _character);
+    Move onUpdate(const GameState& game) override;
+    void onEnter(const GameState& game) override;
+    void onExit(const GameState& game) override;
+    ~NonfrightenedState() override;
+};
+
 class ExampleStateMachine: public FiniteStateMachine{
 
 public:
