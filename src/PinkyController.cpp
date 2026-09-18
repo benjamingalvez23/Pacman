@@ -119,7 +119,7 @@ Status PinkyChase::update() {
     return BH_SUCCESS;
 }
  
-PinkyScatter::PinkyScatter() : target(-1, -1) {
+PinkyScatter::PinkyScatter() : target(0, 0) {
 }
  
 Status PinkyScatter::update() {

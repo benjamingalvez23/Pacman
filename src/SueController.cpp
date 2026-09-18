@@ -1,31 +1,118 @@
 #include "SueController.h"
 
-#include <iostream>
 #include <vector>
 
 // ============================================================
-// FUNCION AUXILIAR
+// MOVIMIENTOS
 // ============================================================
 
-static std::vector<Move> getSueMoves(
+static std::vector<Move> getMoves(
     const GameState& game,
     const std::shared_ptr<Character>& character
 )
 {
-    const auto myPos =
-        character->getPos();
-
     if (character->getDirection() == PASS)
     {
-        return game.getMaze().getPossibleMoves(myPos);
+        return game.getMaze().getPossibleMoves(
+            character->getPos()
+        );
     }
 
     return game.getMaze().getGhostLegalMoves(
-        myPos,
+        character->getPos(),
         character->getDirection()
     );
 }
 
+// ============================================================
+// IR HACIA UN OBJETIVO
+// ============================================================
+
+static Move moveToTarget(
+    const GameState& game,
+    const std::shared_ptr<Character>& character,
+    std::pair<int, int> target
+)
+{
+    auto moves = getMoves(game, character);
+
+    Move bestMove = PASS;
+    float bestDistance = 1000000000.0f;
+
+    for (Move move : moves)
+    {
+        if (move == PASS)
+            continue;
+
+        int node =
+            game.getMaze().getNeighbour(
+                character->getPos(),
+                move
+            );
+
+        if (node == -1)
+            continue;
+
+        auto pos =
+            game.getMaze().getNodePos(node);
+
+        float distance =
+            euclid2(target, pos);
+
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            bestMove = move;
+        }
+    }
+
+    return bestMove;
+}
+
+// ============================================================
+// ALEJARSE
+// ============================================================
+
+static Move moveAway(
+    const GameState& game,
+    const std::shared_ptr<Character>& character,
+    std::pair<int, int> target
+)
+{
+    auto moves = getMoves(game, character);
+
+    Move bestMove = PASS;
+    float bestDistance = -1.0f;
+
+    for (Move move : moves)
+    {
+        if (move == PASS)
+            continue;
+
+        int node =
+            game.getMaze().getNeighbour(
+                character->getPos(),
+                move
+            );
+
+        if (node == -1)
+            continue;
+
+        auto pos =
+            game.getMaze().getNodePos(node);
+
+        float distance =
+            euclid2(target, pos);
+
+        if (distance > bestDistance)
+        {
+            bestDistance = distance;
+            bestMove = move;
+        }
+    }
+
+    return bestMove;
+}
 
 // ============================================================
 // CONTROLLER
@@ -50,7 +137,6 @@ Move SueController::getMove(
     return fsm->update(game);
 }
 
-
 // ============================================================
 // WAIT
 // ============================================================
@@ -62,23 +148,12 @@ SueWaitState::SueWaitState(
 {
 }
 
-void SueWaitState::onEnter(
-    const GameState&
-)
-{
-    std::cout
-        << "Sue FSM -> WAIT"
-        << std::endl;
-}
-
 Move SueWaitState::onUpdate(
     const GameState&
 )
 {
-    // Sue permanece dentro de la casa.
     return PASS;
 }
-
 
 // ============================================================
 // SCATTER
@@ -91,80 +166,19 @@ SueScatterState::SueScatterState(
 {
 }
 
-void SueScatterState::onEnter(
-    const GameState&
-)
-{
-    std::cout
-        << "Sue FSM -> SCATTER"
-        << std::endl;
-
-    auto ghost =
-        std::dynamic_pointer_cast<Ghost>(character);
-
-    if (ghost)
-    {
-        ghost->revert();
-    }
-}
-
 Move SueScatterState::onUpdate(
     const GameState& game
 )
 {
-    std::vector<Move> moves =
-        getSueMoves(game, character);
+    // Esquina inferior izquierda
+    std::pair<int, int> target(5, 104);
 
-    if (moves.empty())
-    {
-        return PASS;
-    }
-
-    // Esquina de Clyde/Sue.
-    const std::pair<int, int> target =
-        std::make_pair(5, 104);
-
-    const auto myPos =
-        character->getPos();
-
-    float bestDistance =
-        euclid2(
-            game.getMaze().getNodePos(
-                game.getMaze().getNeighbour(
-                    myPos,
-                    moves[0]
-                )
-            ),
-            target
-        );
-
-    std::size_t bestIndex = 0;
-
-    for (std::size_t i = 1;
-         i < moves.size();
-         ++i)
-    {
-        float distance =
-            euclid2(
-                game.getMaze().getNodePos(
-                    game.getMaze().getNeighbour(
-                        myPos,
-                        moves[i]
-                    )
-                ),
-                target
-            );
-
-        if (distance < bestDistance)
-        {
-            bestDistance = distance;
-            bestIndex = i;
-        }
-    }
-
-    return moves[bestIndex];
+    return moveToTarget(
+        game,
+        character,
+        target
+    );
 }
-
 
 // ============================================================
 // CHASE
@@ -177,81 +191,21 @@ SueChaseState::SueChaseState(
 {
 }
 
-void SueChaseState::onEnter(
-    const GameState&
-)
-{
-    std::cout
-        << "Sue FSM -> CHASE"
-        << std::endl;
-
-    auto ghost =
-        std::dynamic_pointer_cast<Ghost>(character);
-
-    if (ghost)
-    {
-        ghost->revert();
-    }
-}
-
 Move SueChaseState::onUpdate(
     const GameState& game
 )
 {
-    std::vector<Move> moves =
-        getSueMoves(game, character);
-
-    if (moves.empty())
-    {
-        return PASS;
-    }
-
-    const auto myPos =
-        character->getPos();
-
-    const auto pacmanPos =
+    auto pacman =
         game.getMaze().getNodePos(
             game.getPacmanPos()
         );
 
-    float bestDistance =
-        euclid2(
-            game.getMaze().getNodePos(
-                game.getMaze().getNeighbour(
-                    myPos,
-                    moves[0]
-                )
-            ),
-            pacmanPos
-        );
-
-    std::size_t bestIndex = 0;
-
-    for (std::size_t i = 1;
-         i < moves.size();
-         ++i)
-    {
-        float distance =
-            euclid2(
-                game.getMaze().getNodePos(
-                    game.getMaze().getNeighbour(
-                        myPos,
-                        moves[i]
-                    )
-                ),
-                pacmanPos
-            );
-
-        if (distance < bestDistance)
-        {
-            bestDistance = distance;
-            bestIndex = i;
-        }
-    }
-
-    return moves[bestIndex];
+    return moveToTarget(
+        game,
+        character,
+        pacman
+    );
 }
-
 
 // ============================================================
 // FLEE
@@ -264,78 +218,24 @@ SueFleeState::SueFleeState(
 {
 }
 
-void SueFleeState::onEnter(
-    const GameState&
-)
-{
-    std::cout
-        << "Sue FSM -> FLEE"
-        << std::endl;
-}
-
 Move SueFleeState::onUpdate(
     const GameState& game
 )
 {
-    std::vector<Move> moves =
-        getSueMoves(game, character);
-
-    if (moves.empty())
-    {
-        return PASS;
-    }
-
-    const auto myPos =
-        character->getPos();
-
-    const auto pacmanPos =
+    auto pacman =
         game.getMaze().getNodePos(
             game.getPacmanPos()
         );
 
-    // Alejarse lo máximo posible
-    // de Pac-Man.
-    float bestDistance =
-        euclid2(
-            game.getMaze().getNodePos(
-                game.getMaze().getNeighbour(
-                    myPos,
-                    moves[0]
-                )
-            ),
-            pacmanPos
-        );
-
-    std::size_t bestIndex = 0;
-
-    for (std::size_t i = 1;
-         i < moves.size();
-         ++i)
-    {
-        float distance =
-            euclid2(
-                game.getMaze().getNodePos(
-                    game.getMaze().getNeighbour(
-                        myPos,
-                        moves[i]
-                    )
-                ),
-                pacmanPos
-            );
-
-        if (distance > bestDistance)
-        {
-            bestDistance = distance;
-            bestIndex = i;
-        }
-    }
-
-    return moves[bestIndex];
+    return moveAway(
+        game,
+        character,
+        pacman
+    );
 }
 
-
 // ============================================================
-// DOT COUNT
+// TRANSICION POR DOTS
 // ============================================================
 
 SueDotCountTransition::SueDotCountTransition(
@@ -344,8 +244,7 @@ SueDotCountTransition::SueDotCountTransition(
 )
     : nextState(next),
       dotsRequired(dots),
-      initialPills(-1),
-      initialized(false)
+      initialPills(-1)
 {
 }
 
@@ -353,23 +252,23 @@ bool SueDotCountTransition::isValid(
     const GameState& game
 )
 {
-    const auto& pills =
-        game.getMaze().getPillPositions();
+    int current =
+        static_cast<int>(
+            game.getMaze()
+                .getPillPositions()
+                .size()
+        );
 
-    const int remainingPills =
-        static_cast<int>(pills.size());
-
-    if (!initialized)
+    if (initialPills == -1)
     {
-        initialPills = remainingPills;
-        initialized = true;
+        initialPills = current;
         return false;
     }
 
-    const int dotsEaten =
-        initialPills - remainingPills;
+    int eaten =
+        initialPills - current;
 
-    return dotsEaten >= dotsRequired;
+    return eaten >= dotsRequired;
 }
 
 std::shared_ptr<FSMState>
@@ -378,9 +277,8 @@ SueDotCountTransition::getNextState()
     return nextState;
 }
 
-
 // ============================================================
-// TIME
+// TRANSICION POR TIEMPO
 // ============================================================
 
 SueTimeTransition::SueTimeTransition(
@@ -388,7 +286,7 @@ SueTimeTransition::SueTimeTransition(
     float seconds
 )
     : nextState(next),
-      duration(seconds),
+      seconds(seconds),
       started(false)
 {
 }
@@ -407,13 +305,13 @@ bool SueTimeTransition::isValid(
         return false;
     }
 
-    const auto now =
-        std::chrono::steady_clock::now();
+    float elapsed =
+        std::chrono::duration<float>(
+            std::chrono::steady_clock::now()
+            - startTime
+        ).count();
 
-    const std::chrono::duration<float> elapsed =
-        now - startTime;
-
-    return elapsed.count() >= duration;
+    return elapsed >= seconds;
 }
 
 std::shared_ptr<FSMState>
@@ -429,13 +327,11 @@ void SueTimeTransition::onTransition(
     started = false;
 }
 
-
 // ============================================================
 // VULNERABLE
 // ============================================================
 
-SueVulnerableTransition::
-SueVulnerableTransition(
+SueVulnerableTransition::SueVulnerableTransition(
     std::shared_ptr<FSMState> next
 )
     : nextState(next)
@@ -446,7 +342,7 @@ bool SueVulnerableTransition::isValid(
     const GameState& game
 )
 {
-    // Sue/Clyde = Ghost 3.
+    // Sue es el fantasma 3
     return game.isGhostEdible(3);
 }
 
@@ -456,13 +352,11 @@ SueVulnerableTransition::getNextState()
     return nextState;
 }
 
-
 // ============================================================
-// RECOVER
+// RECUPERAR
 // ============================================================
 
-SueRecoverTransition::
-SueRecoverTransition(
+SueRecoverTransition::SueRecoverTransition(
     std::shared_ptr<FSMState> next
 )
     : nextState(next)
@@ -482,9 +376,8 @@ SueRecoverTransition::getNextState()
     return nextState;
 }
 
-
 // ============================================================
-// SUE STATE MACHINE
+// FSM DE SUE
 // ============================================================
 
 SueStateMachine::SueStateMachine(
@@ -492,59 +385,31 @@ SueStateMachine::SueStateMachine(
 )
     : FiniteStateMachine(character)
 {
-    // --------------------------------------------------------
-    // CREAR ESTADOS
-    // --------------------------------------------------------
-
     auto wait =
-        std::make_shared<SueWaitState>(
-            character
-        );
+        std::make_shared<SueWaitState>(character);
 
     auto scatter =
-        std::make_shared<SueScatterState>(
-            character
-        );
+        std::make_shared<SueScatterState>(character);
 
     auto chase =
-        std::make_shared<SueChaseState>(
-            character
-        );
+        std::make_shared<SueChaseState>(character);
 
-    auto fleeFromScatter =
-        std::make_shared<SueFleeState>(
-            character
-        );
+    auto fleeScatter =
+        std::make_shared<SueFleeState>(character);
 
-    auto fleeFromChase =
-        std::make_shared<SueFleeState>(
-            character
-        );
-
-
-    // --------------------------------------------------------
-    // ESTADO INICIAL
-    // --------------------------------------------------------
+    auto fleeChase =
+        std::make_shared<SueFleeState>(character);
 
     initialState = wait;
-    activeState = initialState;
-
-
-    // --------------------------------------------------------
-    // REGISTRAR ESTADOS
-    // --------------------------------------------------------
+    activeState = wait;
 
     states.push_back(wait);
     states.push_back(scatter);
     states.push_back(chase);
-    states.push_back(fleeFromScatter);
-    states.push_back(fleeFromChase);
+    states.push_back(fleeScatter);
+    states.push_back(fleeChase);
 
-
-    // ========================================================
     // WAIT -> SCATTER
-    // ========================================================
-
     wait->addTransition(
         std::make_shared<SueDotCountTransition>(
             scatter,
@@ -552,23 +417,14 @@ SueStateMachine::SueStateMachine(
         )
     );
 
-
-    // ========================================================
     // SCATTER -> FLEE
-    // ========================================================
-
-    // Vulnerabilidad primero para tener prioridad.
     scatter->addTransition(
         std::make_shared<SueVulnerableTransition>(
-            fleeFromScatter
+            fleeScatter
         )
     );
 
-
-    // ========================================================
     // SCATTER -> CHASE
-    // ========================================================
-
     scatter->addTransition(
         std::make_shared<SueTimeTransition>(
             chase,
@@ -576,22 +432,14 @@ SueStateMachine::SueStateMachine(
         )
     );
 
-
-    // ========================================================
     // CHASE -> FLEE
-    // ========================================================
-
     chase->addTransition(
         std::make_shared<SueVulnerableTransition>(
-            fleeFromChase
+            fleeChase
         )
     );
 
-
-    // ========================================================
     // CHASE -> SCATTER
-    // ========================================================
-
     chase->addTransition(
         std::make_shared<SueTimeTransition>(
             scatter,
@@ -599,32 +447,23 @@ SueStateMachine::SueStateMachine(
         )
     );
 
-
-    // ========================================================
-    // FLEE DESDE SCATTER -> SCATTER
-    // ========================================================
-
-    fleeFromScatter->addTransition(
+    // FLEE -> SCATTER
+    fleeScatter->addTransition(
         std::make_shared<SueRecoverTransition>(
             scatter
         )
     );
 
-
-    // ========================================================
-    // FLEE DESDE CHASE -> CHASE
-    // ========================================================
-
-    fleeFromChase->addTransition(
+    // FLEE -> CHASE
+    fleeChase->addTransition(
         std::make_shared<SueRecoverTransition>(
             chase
         )
     );
 }
 
-
 // ============================================================
-// FSM UPDATE
+// UPDATE
 // ============================================================
 
 Move SueStateMachine::update(
@@ -648,11 +487,6 @@ Move SueStateMachine::update(
 
     return activeState->onUpdate(game);
 }
-
-
-// ============================================================
-// DESTRUCTOR
-// ============================================================
 
 SueStateMachine::~SueStateMachine()
 {
